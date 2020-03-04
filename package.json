@@ -1,0 +1,27 @@
+{
+  "name": "irvcounter",
+  "version": "1.0.3",
+  "description": "Yogstation IRV election utility",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "alexkar598",
+  "license": "GPL",
+  "dependencies": {
+    "buffer-replace": "^1.0.0",
+    "csv-parser": "^2.3.2",
+    "yargs": "^15.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^13.7.7",
+    "@types/yargs": "^15.0.4",
+    "@typescript-eslint/eslint-plugin": "^2.22.0",
+    "@typescript-eslint/parser": "^2.22.0",
+    "eslint": "^6.8.0",
+    "typescript": "^3.8.3"
+  },
+  "bin": {
+    "irvcounter": "bin/main.js"
+  }
+}

@@ -1,0 +1,8 @@
+.idea
+**.iml
+**.csv
+node_modules
+**.map
+irvcounter-linux
+irvcounter-macos
+irvcounter-win.exe
