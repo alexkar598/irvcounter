@@ -140,12 +140,13 @@ function parseResults() {
     }
     console.log(`\n\nThe winners are: \n${winners.join("\n")}`);
 }
-function readCsv(transform, oncb, mapvalcb) {
+function readCsv(transform, oncb, mapvalcb, mapheadcb) {
     fs_1.default.createReadStream(path_1.default.resolve(process.cwd(), argsv.f))
         .pipe(transform)
         .pipe(csv_parser_1.default({
         //@ts-ignore
         mapValues: mapvalcb,
+        mapHeaders: mapheadcb || (({ header }) => header),
         newline: "\n",
         raw: true,
     }))
@@ -153,6 +154,10 @@ function readCsv(transform, oncb, mapvalcb) {
         .on("end", () => {
         parseResults();
     });
+}
+function extractName(val) {
+    const regex = /1 \[(.*)]/;
+    return regex.test(val) ? regex.exec(val)[1] : null;
 }
 switch (argsv.p) {
     case "2019": {
@@ -188,19 +193,22 @@ switch (argsv.p) {
             if (!results[args.Token])
                 results[args.Token] = [];
             for (const [key, value] of Object.entries(args)) {
-                const parsedKey = parseInt(key);
-                if (!isNaN(parsedKey)) {
-                    results[args.Token][parsedKey - 1] = value;
+                const parsedKey = parseInt(value);
+                if (key !== "Token") {
+                    results[args.Token][parsedKey - 1] = key;
                 }
             }
-        }, ({ value, header }) => {
+        }, ({ value }) => {
             value = value.toString().trim();
-            const parsedKey = parseInt(header.toString());
-            if (!isNaN(parsedKey)) {
-                if (!candidates.includes(value) && value !== "")
-                    candidates.push(value);
-            }
             return value;
+        }, ({ header, index }) => {
+            if (index == 1) {
+                return "Token";
+            }
+            header = extractName(header.toString());
+            if (!candidates.includes(header) && header !== null)
+                candidates.push(header);
+            return header;
         });
     }
 }
