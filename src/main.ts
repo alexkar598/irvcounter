@@ -36,7 +36,7 @@ const argsv = yargs
 		"p": {
 			alias: "parser",
 			description: "Parser version to use (defaults to latest version, used for historical recounts)",
-			default: "2019",
+			default: "2020",
 			string: true,
 			choices: [
 				"2019",
