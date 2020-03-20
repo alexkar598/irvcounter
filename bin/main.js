@@ -8,9 +8,24 @@ const fs_1 = __importDefault(require("fs"));
 const csv_parser_1 = __importDefault(require("csv-parser"));
 const stream_1 = require("stream");
 const buffer_replace_1 = __importDefault(require("buffer-replace"));
-const results = {};
-const candidates = [];
+const ballots = {};
+const allCandidates = [];
 const winners = [];
+// eslint-disable-next-line @typescript-eslint/unbound-method,@typescript-eslint/explicit-function-return-type
+Array.prototype.shuffle = function () {
+    let currentIndex = this.length, temporaryValue, randomIndex;
+    // While there remain elements to shuffle...
+    while (0 !== currentIndex) {
+        // Pick a remaining element...
+        randomIndex = Math.floor(Math.random() * currentIndex);
+        currentIndex -= 1;
+        // And swap it with the current element.
+        temporaryValue = this[currentIndex];
+        this[currentIndex] = this[randomIndex];
+        this[randomIndex] = temporaryValue;
+    }
+    return this;
+};
 const yargs_1 = __importDefault(require("yargs"));
 const path_1 = __importDefault(require("path"));
 const argsv = yargs_1.default
@@ -52,90 +67,124 @@ const argsv = yargs_1.default
     .argv;
 const verbose = argsv.v;
 // eslint-disable-next-line @typescript-eslint/unbound-method
-console.vlog = function (...args) {
+console.verboseLog = function (...args) {
     if (verbose)
         console.log(...args);
 };
+/*function getAverages(): {[key: string]: number}{
+    const positions: {[key: string]: Array<number>} = {}
+    for(const votes of Object.values(ballots)) {
+        for(let x=1; x < votes.length; x++){
+            if(positions[votes[x]] === undefined) positions[votes[x]] = []
+            positions[votes[x]].push(x)
+        }
+    }
+
+    const averages: {[key: string]: number} = {}
+    for(const [key, value] of Object.entries(positions)){
+        averages[key] = value.reduce((previous, current) =>  current + previous) / value.length
+    }
+    return averages
+}*/
+function processBallots(resultsRef, pass = 0) {
+    for (const votes of Object.values(ballots)) {
+        let casted = false;
+        for (let x = 0; !casted; x++) {
+            if (votes[x] === undefined) {
+                console.verboseLog("Skipping ballot because end of list has been reached and no candidates have won");
+                break;
+            }
+            if (resultsRef[votes[x]] !== undefined) {
+                if (pass) {
+                    --pass;
+                    continue;
+                }
+                resultsRef[votes[x]]++;
+                casted = true;
+            }
+        }
+    }
+}
 function parseResults() {
-    const losers = {};
-    candidates.forEach(value => {
-        losers[value] = 0;
+    const remainingCandidates = {};
+    allCandidates.forEach(value => {
+        remainingCandidates[value] = 0;
     });
     for (let i = 0; i < argsv.n; i++) {
-        console.vlog(`Starting round ${i + 1}`);
-        const base = Object.assign({}, losers);
-        const positions = {};
-        for (const votes of Object.values(results)) {
-            for (let x = 1; x < votes.length; x++) {
-                if (positions[votes[x]] === undefined)
-                    positions[votes[x]] = [];
-                positions[votes[x]].push(x);
-            }
-        }
-        const averages = {};
-        for (const [key, value] of Object.entries(positions)) {
-            averages[key] = value.reduce((previous, current) => current + previous) / value.length;
-        }
-        let winner = false;
-        while (!winner) {
-            const roundResults = Object.assign({}, base);
-            for (const votes of Object.values(results)) {
-                let casted = false;
-                for (let x = 0; !casted; x++) {
-                    if (votes[x] === undefined) {
-                        console.vlog("Skipping ballot because end of list has been reached and no candidates have won");
-                        break;
-                    }
-                    if (roundResults[votes[x]] !== undefined) {
-                        roundResults[votes[x]]++;
-                        casted = true;
-                    }
-                }
-            }
+        console.verboseLog();
+        console.verboseLog();
+        console.verboseLog(`Electing candidate ${i + 1}`);
+        const seatCandidates = Object.assign({}, remainingCandidates);
+        let elected = false;
+        while (!elected) {
+            let roundResults = Object.assign({}, seatCandidates);
+            processBallots(roundResults);
             const totalVotes = Math.round(Object.values(roundResults).reduce((acc, val) => acc + val));
             for (const [candidate, votes] of Object.entries(roundResults)) {
                 if (votes > totalVotes / 2) {
                     console.log(`${candidate} won seat number ${i + 1} with ${votes} votes`);
                     winners.push(candidate);
-                    delete losers[candidate];
-                    winner = true;
+                    delete remainingCandidates[candidate];
+                    elected = true;
                 }
             }
-            if (!winner) {
-                let allequal = true;
-                let last;
-                for (const val of Object.values(roundResults)) {
-                    if (!last)
-                        last = val;
-                    if (val !== last) {
-                        allequal = false;
-                        break;
-                    }
-                }
-                if (allequal) {
-                    console.log(`Tie detected between ${Object.keys(roundResults).join(", ")}`);
-                    const localaverage = {};
-                    for (const val of Object.keys(roundResults)) {
-                        localaverage[val] = averages[val];
-                    }
-                    const bestavg = Math.min(...Object.values(localaverage));
-                    for (const cand of Object.keys(roundResults)) {
-                        if (localaverage[cand] !== bestavg) {
-                            console.vlog(`${cand} killed for not having the best average of ${bestavg}`);
-                            delete roundResults[cand];
-                        }
-                    }
-                }
-                console.vlog("No winner, killing smallest");
-                const values = Object.values(roundResults);
-                const smallest = Math.min(...values);
-                for (const [candidate, votes] of Object.entries(roundResults)) {
-                    if (votes === smallest) {
-                        console.vlog(`${candidate} killed for having the least amount of votes(${votes})`);
-                        delete base[candidate];
-                    }
+            if (elected)
+                continue;
+            console.verboseLog("No winner, killing someone");
+            let killed = false;
+            for (const [candidate, votes] of Object.entries(roundResults)) {
+                if (votes === 0) {
+                    console.verboseLog(`${candidate} killed for having no votes at all`);
+                    delete seatCandidates[candidate];
+                    killed = true;
                 }
             }
+            if (killed)
+                continue;
+            const smallest = Math.min(...Object.values(roundResults));
+            let lowests = [];
+            for (const [candidate, votes] of Object.entries(roundResults)) {
+                if (votes == smallest)
+                    lowests.push(candidate);
+            }
+            if (lowests.length === 1) {
+                console.verboseLog(`${lowests[0]} killed for having the least amount of votes(${smallest})`);
+                delete seatCandidates[lowests[0]];
+                killed = true;
+            }
+            if (killed)
+                continue;
+            for (let i = 1; i <= 50; i++) {
+                console.verboseLog(`Candidates to tie break: ${lowests.join(", ")} with ${smallest} votes with option number ${i + 1}`);
+                roundResults = Object.assign({}, seatCandidates);
+                processBallots(roundResults, i);
+                const results = {};
+                lowests.forEach(value => {
+                    results[value] = roundResults[value];
+                });
+                for (const [person, votes] of Object.entries(results)) {
+                    if (verbose)
+                        process.stdout.write(`${person}: ${votes}, `);
+                }
+                console.verboseLog();
+                const deathnumber = Math.min(...Object.values(results));
+                /*const abouttodie: Array<string> = []*/
+                lowests = [];
+                for (const [candidate, votes] of Object.entries(results)) {
+                    if (votes == deathnumber)
+                        lowests.push(candidate);
+                }
+                if (lowests.length === 1) {
+                    console.verboseLog(`TIEBREAK: ${lowests[0]} killed for having the least amount of votes(${deathnumber}) at tier ${i + 1}`);
+                    delete seatCandidates[lowests[0]];
+                    killed = true;
+                    break;
+                }
+            }
+            if (killed)
+                continue;
+            console.error("Unable to find anyone to eliminate. Program will now exit.");
+            process.exit(1);
         }
     }
     console.log(`\n\nThe winners are: \n${winners.join("\n")}`);
@@ -168,13 +217,13 @@ switch (argsv.p) {
             }
         });
         readCsv(transform, ({ Vote, Voter }) => {
-            if (!results[Voter])
-                results[Voter] = [];
-            results[Voter].push(Vote.toString());
+            if (!ballots[Voter])
+                ballots[Voter] = [];
+            ballots[Voter].push(Vote.toString());
         }, ({ value, header }) => {
             value = value.toString().trim();
-            if (header.toString() === "Vote" && !candidates.includes(value))
-                candidates.push(value);
+            if (header.toString() === "Vote" && !allCandidates.includes(value))
+                allCandidates.push(value);
             return value;
         });
         break;
@@ -190,12 +239,12 @@ switch (argsv.p) {
                 console.error("file format not supported, Token column is missing, are you using the right parser and is your file formatted correctly?");
                 process.exit(1);
             }
-            if (!results[args.Token])
-                results[args.Token] = [];
+            if (!ballots[args.Token])
+                ballots[args.Token] = [];
             for (const [key, value] of Object.entries(args)) {
                 const parsedKey = parseInt(value);
                 if (key !== "Token") {
-                    results[args.Token][parsedKey - 1] = key;
+                    ballots[args.Token][parsedKey - 1] = key;
                 }
             }
         }, ({ value }) => {
@@ -206,8 +255,8 @@ switch (argsv.p) {
                 return "Token";
             }
             header = extractName(header.toString());
-            if (!candidates.includes(header) && header !== null)
-                candidates.push(header);
+            if (!allCandidates.includes(header) && header !== null)
+                allCandidates.push(header);
             return header;
         });
     }
